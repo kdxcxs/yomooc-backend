@@ -9,12 +9,22 @@ from bs4 import BeautifulSoup
 
 
 class LoginError(BaseException):
-    def __init__(self, ErrorInfo):
+    def __init__(self, error_info):
         super().__init__(self)
-        self.errorinfo = ErrorInfo
+        self.error_info = error_info
 
     def __str__(self):
-        return self.errorinfo
+        return self.error_info
+
+
+
+class ParseError(BaseException):
+    def __init__(self, error_info):
+        super().__init__(self)
+        self.error_info = error_info
+
+    def __str__(self):
+        return self.error_info
 
 
 class TopicPage(object):
@@ -28,12 +38,21 @@ class TopicPage(object):
         topic_table = page_soup.find_all('table')[1]
         for tr in topic_table.findChildren('tr')[1:]:
             title_dom = tr.findChildren('td')[1].findChild('b')
+
             if title_dom is None:
                 title_dom = tr.findChildren('td')[1].findChild('a')
                 title_dom.string = title_dom.string[:-9]  # remove the redundant '\n        '
 
-            self.topics.append(
-                {'title': title_dom.string})
+            thread_title = title_dom.string
+            if title_dom.name == 'b':
+                thread_id = title_dom.parent.attrs['href'].split('=')[1]
+            elif title_dom.name == 'a':
+                thread_id = title_dom.attrs['href'].split('=')[1]
+            else:
+                raise ParseError('Cannot get thread id')
+
+            self.topics.append({'title': thread_title,
+                                'id': thread_id})
 
 
 class UmoocClient(object):
