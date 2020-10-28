@@ -5,6 +5,7 @@ A client that simulates the desktop device to communicate with umooc server
 import requests
 import time
 import re
+from bs4 import BeautifulSoup
 
 
 class LoginError(BaseException):
@@ -14,6 +15,25 @@ class LoginError(BaseException):
 
     def __str__(self):
         return self.errorinfo
+
+
+class TopicPage(object):
+    def __init__(self, raw_doc):
+        self.raw_html = raw_doc
+        self.topics = []
+        self.parse()
+
+    def parse(self):
+        page_soup = BeautifulSoup(self.raw_html, 'html.parser')
+        topic_table = page_soup.find_all('table')[1]
+        for tr in topic_table.findChildren('tr')[1:]:
+            title_dom = tr.findChildren('td')[1].findChild('b')
+            if title_dom is None:
+                title_dom = tr.findChildren('td')[1].findChild('a')
+                title_dom.string = title_dom.string[:-9]  # remove the redundant '\n        '
+
+            self.topics.append(
+                {'title': title_dom.string})
 
 
 class UmoocClient(object):
@@ -91,4 +111,6 @@ class UmoocClient(object):
                                                 '&forumid=102211',
                                      'Cookie': f'JSESSIONID={self.js_session_id}; '
                                                f'DWRSESSIONID={self.dwr_session_id}'})
-        print(resp.text)
+        topic_page = TopicPage(resp.text)
+        topic_page.parse()
+        return topic_page.topics
