@@ -17,7 +17,6 @@ class LoginError(BaseException):
         return self.error_info
 
 
-
 class ParseError(BaseException):
     def __init__(self, error_info):
         super().__init__(self)
@@ -27,7 +26,7 @@ class ParseError(BaseException):
         return self.error_info
 
 
-class TopicPage(object):
+class TopicListPage(object):
     def __init__(self, raw_doc):
         self.raw_html = raw_doc
         self.topics = []
@@ -55,10 +54,29 @@ class TopicPage(object):
                                 'id': thread_id})
 
 
+class TopicPage(object):
+    def __init__(self, raw_doc):
+        self.raw_html = raw_doc
+        self.replies = []
+        self.parse()
+
+    def parse(self):
+        # TODO:parse photos
+        page_soup = BeautifulSoup(self.raw_html, 'html.parser')
+        inputs = page_soup.find_all('input')
+        for reply_input in inputs:
+            self.replies.append(
+                {'username': reply_input.find_parents('tr')[0].h6.contents[0][25:],  # remove the redundant spaces
+                 'time': reply_input.find_parents('tr')[0].find_all('li')[1].span.string[7:],
+                 'content': reply_input.attrs['value'].replace('&#55357;', '[emoji]')})
+
+
 class UmoocClient(object):
     def __init__(self):
         self.js_session_id = ''
         self.dwr_session_id = ''
+        self.topic_list = []
+        self.replies = {}
 
     def login(self, username, password):
         resp = requests.post('http://eol.ctbu.edu.cn/meol/loginCheck.do',
@@ -80,7 +98,7 @@ class UmoocClient(object):
         else:
             raise LoginError('Fail to get session')
 
-    def get_topics(self, page):
+    def get_topic_list(self, page=1):
         # get dwr session id
         resp = requests.post('http://eol.ctbu.edu.cn/meol/dwr/call/plaincall/__System.generateId.dwr',
                              headers={'Origin': 'http://eol.ctbu.edu.cn',
@@ -103,8 +121,8 @@ class UmoocClient(object):
 
         # get topics
 
-        # it is needed to request some pages before getting the topic list, maybe the server is judging which course the
-        # user is
+        # it is needed to request some pages before getting the topic list
+        # maybe the server is judging which course the user is
         requests.get('http://eol.ctbu.edu.cn/meol/jpk/course/layout/newpage/index.jsp?courseId=46445',
                      headers={'Upgrade-Insecure-Requests': '1',
                               'User-Agent': 'yomooc',
@@ -130,6 +148,16 @@ class UmoocClient(object):
                                                 '&forumid=102211',
                                      'Cookie': f'JSESSIONID={self.js_session_id}; '
                                                f'DWRSESSIONID={self.dwr_session_id}'})
-        topic_page = TopicPage(resp.text)
-        topic_page.parse()
-        return topic_page.topics
+        topic_list_page = TopicListPage(resp.text)
+        self.topic_list = topic_list_page.topics
+        return self.topic_list
+
+    def get_replies(self, thread_ids=None):
+        if thread_ids is None:
+            thread_ids = [topic['id'] for topic in self.topic_list]
+        for thread_id in thread_ids:
+            resp = requests.get(f'http://eol.ctbu.edu.cn/meol/common/faq/thread.jsp?threadid={thread_id}',
+                                headers={'User-Agent': 'yomooc'})
+            topic_page = TopicPage(resp.text)
+            self.replies[thread_id] = topic_page.replies
+        return self.replies
