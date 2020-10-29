@@ -6,6 +6,18 @@ import requests
 import time
 import re
 from bs4 import BeautifulSoup
+import os.path
+
+
+def get_img(img_id):
+    #  TODO:save images to a specific path
+    if not os.path.isfile(f'{img_id}.jpg'):
+        resp = requests.get(f'http://eol.ctbu.edu.cn/meol/common/ckeditor/openfile.jsp?id={img_id}',
+                            headers={'User-Agent': 'yomooc'},
+                            stream=True)
+        with open(f'{img_id}.jpg', 'wb') as img_file:
+            for chunk in resp:
+                img_file.write(chunk)
 
 
 class LoginError(BaseException):
@@ -61,14 +73,25 @@ class TopicPage(object):
         self.parse()
 
     def parse(self):
-        # TODO:parse photos
         page_soup = BeautifulSoup(self.raw_html, 'html.parser')
         inputs = page_soup.find_all('input')
         for reply_input in inputs:
+            contents = []
+            for content in BeautifulSoup(reply_input.attrs['value'].replace('&#55357;', '[emoji]'),
+                                         'html.parser').contents:
+                if content.name != 'br':
+                    if content.name == 'div':
+                        for div_child in content.contents:
+                            if div_child.name == 'img':
+                                img_id = div_child['src'][38:-2]
+                                get_img(img_id)
+                                contents.append({'type': 'img', 'img_id': img_id})
+                    else:  # pure text
+                        contents.append({'type': 'text', 'content': content})
             self.replies.append(
                 {'username': reply_input.find_parents('tr')[0].h6.contents[0][25:],  # remove the redundant spaces
                  'time': reply_input.find_parents('tr')[0].find_all('li')[1].span.string[7:],
-                 'content': reply_input.attrs['value'].replace('&#55357;', '[emoji]')})
+                 'content': contents})  # umooc just does not support emoji
 
 
 class UmoocClient(object):
