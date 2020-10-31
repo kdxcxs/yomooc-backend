@@ -6,18 +6,6 @@ import requests
 import time
 import re
 from bs4 import BeautifulSoup
-import os.path
-
-
-def get_img(img_id):
-    #  TODO:save images to a specific path
-    if not os.path.isfile(f'{img_id}.jpg'):
-        resp = requests.get(f'http://eol.ctbu.edu.cn/meol/common/ckeditor/openfile.jsp?id={img_id}',
-                            headers={'User-Agent': 'yomooc'},
-                            stream=True)
-        with open(f'{img_id}.jpg', 'wb') as img_file:
-            for chunk in resp:
-                img_file.write(chunk)
 
 
 class LoginError(BaseException):
@@ -73,25 +61,32 @@ class TopicPage(object):
         self.parse()
 
     def parse(self):
-        page_soup = BeautifulSoup(self.raw_html, 'html.parser')
+        page_soup = BeautifulSoup(self.raw_html.replace(
+            '&lt;img src=&quot;http://eol.ctbu.edu.cn/meol/common/forum/styles/default/image/idiograph.gif&quot; /&gt;'
+            '&lt;br&gt;&lt;div style=&quot;font-size:12px;line-height:200%;letter-spacing:2px;&quot;&gt;&lt;/div&gt;',
+            ''),
+            'html.parser')
         inputs = page_soup.find_all('input')
         for reply_input in inputs:
             contents = []
             for content in BeautifulSoup(reply_input.attrs['value'].replace('&#55357;', '[emoji]'),
                                          'html.parser').contents:
                 if content.name != 'br':
+                    emoji_re = re.compile(u'[\uD800-\uDBFF]|[\uDC00-\uDFFF]')
                     if content.name == 'div':
                         for div_child in content.contents:
                             if div_child.name == 'img':
                                 img_id = div_child['src'][38:-2]
-                                get_img(img_id)
                                 contents.append({'type': 'img', 'img_id': img_id})
+                    elif content.name == 'p':
+                        contents.append(
+                            {'type': 'text', 'content': emoji_re.sub('[emoji]', content.text.replace('\xa0 ', ''))})
                     else:  # pure text
-                        contents.append({'type': 'text', 'content': content})
+                        contents.append({'type': 'text', 'content': emoji_re.sub('[emoji]', content.string)})
             self.replies.append(
                 {'username': reply_input.find_parents('tr')[0].h6.contents[0][25:],  # remove the redundant spaces
                  'time': reply_input.find_parents('tr')[0].find_all('li')[1].span.string[7:],
-                 'content': contents})  # umooc just does not support emoji
+                 'contents': contents})  # umooc just does not support emoji
 
 
 class UmoocClient(object):
@@ -120,8 +115,9 @@ class UmoocClient(object):
             self.js_session_id = resp.cookies['JSESSIONID']
         else:
             raise LoginError('Fail to get session')
+        self.prepare()
 
-    def get_topic_list(self, page=1):
+    def prepare(self):
         # get dwr session id
         resp = requests.post('http://eol.ctbu.edu.cn/meol/dwr/call/plaincall/__System.generateId.dwr',
                              headers={'Origin': 'http://eol.ctbu.edu.cn',
@@ -159,6 +155,8 @@ class UmoocClient(object):
                                          '?courseId=46445',
                               'Cookie': f'JSESSIONID={self.js_session_id}; '
                                         f'DWRSESSIONID={self.dwr_session_id}'})
+
+    def get_topic_list(self, page=1):
         resp = requests.get(f'http://eol.ctbu.edu.cn/meol/common/faq/forum.jsp'
                             f'?viewtype=thread'
                             f'&forumid=102211'
@@ -172,7 +170,7 @@ class UmoocClient(object):
                                      'Cookie': f'JSESSIONID={self.js_session_id}; '
                                                f'DWRSESSIONID={self.dwr_session_id}'})
         topic_list_page = TopicListPage(resp.text)
-        self.topic_list = topic_list_page.topics
+        self.topic_list.extend(topic_list_page.topics)
         return self.topic_list
 
     def get_replies(self, thread_ids=None):
