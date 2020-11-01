@@ -191,3 +191,25 @@ class UmoocClient(object):
             topic_page = TopicPage(resp.text)
             self.replies[thread_id] = topic_page.replies
         return self.replies
+
+    def get_all_topics(self):
+        if self.dwr_session_id == '':
+            self.prepare()
+        resp = requests.get(f'http://eol.ctbu.edu.cn/meol/common/faq/forum.jsp'
+                            f'?viewtype=thread'
+                            f'&forumid=102211'
+                            f'&cateId=0'
+                            f'&s_gotopage={1}',
+                            headers={'Upgrade-Insecure-Requests': '1',
+                                     'User-Agent': 'yomooc',
+                                     'Referer': 'http://eol.ctbu.edu.cn/meol/common/faq/forum.jsp'
+                                                '?count=MODITIME'
+                                                '&forumid=102211',
+                                     'Cookie': f'JSESSIONID={self.js_session_id}; '
+                                               f'DWRSESSIONID={self.dwr_session_id}'})
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        topics_in_total = int(soup.select('div[class="page"] > b')[0].text)
+        for i in range(topics_in_total // 20):
+            self.get_topic_list(i + 1)
+        if topics_in_total % 20 != 0:
+            self.get_topic_list(topics_in_total // 20 + 1)
