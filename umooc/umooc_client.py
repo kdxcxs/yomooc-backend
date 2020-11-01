@@ -81,6 +81,9 @@ class TopicPage(object):
                     elif content.name == 'p':
                         contents.append(
                             {'type': 'text', 'content': emoji_re.sub('[emoji]', content.text.replace('\xa0 ', ''))})
+                    elif content.name == 'table':
+                        # TODO: support tables
+                        contents.append({'type': 'table', 'content': content.__str__()})
                     else:  # pure text
                         contents.append({'type': 'text', 'content': emoji_re.sub('[emoji]', content.string)})
             self.replies.append(
