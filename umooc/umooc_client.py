@@ -69,7 +69,9 @@ class TopicPage(object):
         inputs = page_soup.find_all('input')
         for reply_input in inputs:
             contents = []
-            for content in BeautifulSoup(reply_input.attrs['value'].replace('&#55357;', '[emoji]'),
+            for content in BeautifulSoup(reply_input.attrs['value'].replace(
+                    '&#55357;', '[emoji]').replace(
+                    '<span style="white-space: normal;"><br/></span>', '\n'),
                                          'html.parser').contents:
                 if content.name != 'br':
                     emoji_re = re.compile(u'[\uD800-\uDBFF]|[\uDC00-\uDFFF]')
@@ -84,6 +86,10 @@ class TopicPage(object):
                     elif content.name == 'table':
                         # TODO: support tables
                         contents.append({'type': 'table', 'content': content.__str__()})
+                    elif content.name == 'blockquote':
+                        contents.append({'type': 'blockquote', 'quotes': content.text.split('\xa0')})
+                    elif content.name == 'ol':
+                        contents.append({'type': 'ol', 'lis': [li.text for li in content.children]})
                     else:  # pure text
                         contents.append({'type': 'text', 'content': emoji_re.sub('[emoji]', content.string)})
             self.replies.append(
